@@ -1,0 +1,59 @@
+name: Linux Flatpak release
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: flatpak-stable
+  cancel-in-progress: false
+jobs:
+  build:
+    if: github.repository == 'trifazor/apply_tool'
+    runs-on: [self-hosted, Linux, X64, applytool-builder]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Build and sign on the local machine
+        run: nix develop --command bash scripts/release.sh
+      - name: Upload Pages repository
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
+        with:
+          path: .release/site
+      - name: Prepare GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="build-${GITHUB_SHA}"
+          if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft \
+              --title "Apply Tool — ${GITHUB_SHA:0:7}" \
+              --notes 'Linux x86_64. Download apply-tool.flatpakref and open it in your software manager. This adds our signed update repository. GNOME runtime dependencies come from Flathub. See docs/INSTALL.md for installation and updates.'
+          fi
+          gh release upload "$tag" .release/ApplyTool-x86_64.flatpak \
+            .release/site/apply-tool.flatpakref .release/site/apply-tool.flatpakrepo \
+            .release/SHA256SUMS --clobber --repo "$GITHUB_REPOSITORY"
+  deploy:
+    needs: build
+    runs-on: [self-hosted, Linux, X64, applytool-builder]
+    permissions:
+      pages: write
+      id-token: write
+      contents: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publish update repository
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
+      - name: Publish GitHub release after repository is live
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "build-${GITHUB_SHA}" --repo "$GITHUB_REPOSITORY" --draft=false --latest

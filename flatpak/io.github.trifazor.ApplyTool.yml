@@ -1,0 +1,48 @@
+app-id: io.github.trifazor.ApplyTool
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+sdk-extensions: [org.freedesktop.Sdk.Extension.rust-stable]
+command: apply-tool
+finish-args:
+  # Avoid the WebKit DMA-BUF repaint loop that stalls previews on Wayland.
+  - --env=WEBKIT_DISABLE_DMABUF_RENDERER=1
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --filesystem=home
+  # run the claude / codex / opencode CLIs installed on the host
+  - --talk-name=org.freedesktop.Flatpak
+modules:
+  # Typst (CV/letter → PDF + previews) and pandoc (Typst → DOCX/ODT) are bundled, no LibreOffice needed.
+  - name: typst
+    buildsystem: simple
+    build-commands: [install -Dm755 typst /app/bin/typst]
+    sources:
+      - type: archive
+        url: https://github.com/typst/typst/releases/download/v0.15.1/typst-x86_64-unknown-linux-musl.tar.xz
+        sha256: a6d077d0a95eed5a2eba715b2dae06be954f624ccbf85758a03f389ded33118c
+  - name: pandoc
+    buildsystem: simple
+    build-commands: [install -Dm755 bin/pandoc /app/bin/pandoc]
+    sources:
+      - type: archive
+        url: https://github.com/jgm/pandoc/releases/download/3.12/pandoc-3.12-linux-amd64.tar.gz
+        sha256: 67d7d011fed8c8543306022b985b9b2499ab9b74818df91d8727c7e9ebc5ba06
+  - name: apply-tool
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env: { CARGO_HOME: /run/build/apply-tool/cargo }
+      build-args: [--share=network]
+    build-commands:
+      - cargo build --release --features custom-protocol --manifest-path src-tauri/Cargo.toml
+      - install -Dm755 src-tauri/target/release/apply-tool /app/bin/apply-tool
+      - install -Dm644 src-tauri/icons/icon.png /app/share/icons/hicolor/512x512/apps/io.github.trifazor.ApplyTool.png
+      - install -Dm644 flatpak/io.github.trifazor.ApplyTool.desktop /app/share/applications/io.github.trifazor.ApplyTool.desktop
+    sources:
+      - type: dir
+        path: ..
+        skip: [node_modules, src-tauri/target, .flatpak-builder, flatpak-build, repo, .git, .svelte-kit, .release, .release-cache, audit-results, .env]

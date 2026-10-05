@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Apply Tool
+Comment=Tailor CVs and motivation letters to job postings
+Exec=apply-tool
+Icon=io.github.trifazor.ApplyTool
+Categories=Office;
